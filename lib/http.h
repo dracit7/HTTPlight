@@ -47,4 +47,6 @@ int build_http_response(struct http_response*, char*);
 int free_request(struct http_request*);
 int free_response(struct http_response*);
 
+const char* getStatus(int);
+
 #endif

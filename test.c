@@ -2,6 +2,7 @@
 #include <assert.h>
 
 #include "lib/socket.h"
+#include "lib/logger.h"
 
 int main() {
 

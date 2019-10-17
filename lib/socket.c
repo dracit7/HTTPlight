@@ -1,5 +1,6 @@
 #include "socket.h"
 #include "http.h"
+#include "logger.h"
 
 // Use functions to change these variables
 static char* listen_addr = "127.0.0.1";
@@ -55,11 +56,15 @@ int init_server() {
   struct http_request request;
   struct http_response response;
 
+  Log("===== Starting the server... =====\n");
+
   // Create a ipv4 TCP socket
   sock_fd = socket(AF_INET, SOCK_STREAM, 0);
   if (sock_fd == -1) {
     return -E_SOCK_CREATE_FAILED;
   }
+
+  Log("Creating the server socket...\n");
 
   // Address of this socket
   memset(&serv_addr, 0, sizeof(struct sockaddr_in));
@@ -69,20 +74,31 @@ int init_server() {
 
   err = inet_pton(AF_INET, listen_addr, (void *)(&serv_addr.sin_addr));
   if (err == 0) {
+    close(sock_fd);
     return -E_INVALID_IP;
   } else if (err < 0) {
+    close(sock_fd);
     return -E_UNRECOG;
   }
 
+  Log("Loading the server's address...\n");
+
   // Bind the socket to serv_addr
   if (bind(sock_fd, (struct sockaddr*)&serv_addr, sizeof(struct sockaddr)) == -1) {
+    close(sock_fd);
     return -E_BIND;
   }
 
+  Log("Binding...\n");
+
   // Listen
   if (listen(sock_fd, MAX_LISTEN) == -1) {
+    close(sock_fd);
     return -E_LISTEN;
   }
+
+  Log("===== Server started =====\n");
+  Log("Listening to requests...\n");
 
   // Handle http requests
   while(1) {
@@ -94,6 +110,10 @@ int init_server() {
       continue;
     }
 
+    Log("=== Accepted a valid client. ===\n");
+    Log("IP: %s\n", inet_ntoa(cli_addr.sin_addr));
+    Log("Port: %u\n", cli_addr.sin_port);
+
     // Recieve the request post
     int data_size = recv(connect_fd, data_buf, BUF_LEN, 0);
 
@@ -101,8 +121,14 @@ int init_server() {
     memset(&request, 0, sizeof(struct http_request));
     err = parse_http_request(data_buf, &request);
     if (err < 0) {
+      close(sock_fd);
+      close(connect_fd);
       return err;
     }
+
+    Log("Request checked: HTTP %s request.\n", 
+      (request.header.method == POST) ? "POST" : "GET");
+    Log("Request url: %s\n", request.header.url);
 
     // Handle the request
     memset(&response, 0, sizeof(struct http_response));
@@ -111,16 +137,25 @@ int init_server() {
     strcpy(path, fs_path);
     strcat(path, request.header.url);
 
-    handle_request(&request, &response, path);
+    err = handle_request(&request, &response, path);
+    if (err < 0) {
+      close(sock_fd);
+      close(connect_fd);
+      return err;
+    }
 
     // Build and send the response
     build_http_response(&response, resp_buf);
     send(connect_fd, resp_buf, 4*BUF_LEN, 0);
 
+    Log("Sent response to client: %s\n", getStatus(response.header.status));
+
     // Free to prevent memory leaking
     free_request(&request);
     free_response(&response);
     close(connect_fd);
+
+    Log("=== Closed connection to client. ===\n");
 
   }
 
