@@ -81,8 +81,6 @@ int build_http_response(struct http_response* response, char* raw_resp) {
   strcat(raw_resp, len);
   strcat(raw_resp, "\r\n\r\n");
 
-  strcat(raw_resp, response->content);
-
   return 0;
 
 }
@@ -92,6 +90,19 @@ int handle_request(struct http_request* req, struct http_response* resp, char* p
 
   FILE* fd;
   long f_size;
+  struct stat path_stat;
+
+  // Check if target file is directory
+  stat(path, &path_stat);
+  if (!S_ISREG(path_stat.st_mode)) {
+    resp->header.status = HTTP_NOT_FOUND;
+    resp->header.content_type = "text/plain";
+    resp->header.content_length = 0;
+    // If literal "" was used here, free_request would crash.
+    resp->content = (char*)malloc(1); 
+    resp->content[0] = 0;
+    return -E_FILE_NOT_FOUND;
+  }
 
   // Get file size and read the file in
   fd = fopen(path, "rb");
@@ -109,16 +120,35 @@ int handle_request(struct http_request* req, struct http_response* resp, char* p
   f_size = ftell(fd);
   fseek(fd, 0, SEEK_SET);
 
-  resp->content = (char*)malloc(f_size + 1);
+  resp->content = (char*)malloc(f_size);
   fread(resp->content, 1, f_size, fd);
-  resp->content[f_size] = 0;
 
   fclose(fd);
 
   // Set the header up
   resp->header.status = HTTP_OK;
-  resp->header.content_type = "text/html;charset=utf-8";
-  resp->header.content_length = f_size + 1;
+  resp->header.content_length = f_size;
+
+  // Identify the type of resource
+  size_t ext_len = strcspn(path, ".");
+  if (
+    strcmp(path+ext_len+1, "jpg") == 0 ||
+    strcmp(path+ext_len+1, "png") == 0
+  ) {
+    resp->header.content_type = "image/jpeg";
+  } else if (
+    strcmp(path+ext_len+1, "min.css") == 0 ||
+    strcmp(path+ext_len+1, "css") == 0
+  ) {
+    resp->header.content_type = "text/css;charset=utf-8";
+  } else if (
+    strcmp(path+ext_len+1, "min.js") == 0 ||
+    strcmp(path+ext_len+1, "js") == 0
+  ) {
+    resp->header.content_type = "application/javascript;charset=utf-8";
+  } else {
+    resp->header.content_type = "text/html;charset=utf-8";
+  }
   
   return 0;
 

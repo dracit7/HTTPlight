@@ -140,7 +140,7 @@ int init_server(int thread_num, int job_num, int timeout) {
 void handle_connect(void* _connect_fd) {
 
   char data_buf[BUF_LEN] = {0};
-  char resp_buf[4*BUF_LEN];
+  char resp_buf[1024*BUF_LEN];
   int connect_fd = (int)(long)_connect_fd;
 
   int err;
@@ -189,9 +189,20 @@ void handle_connect(void* _connect_fd) {
 
   // Build and send the response
   build_http_response(&response, resp_buf);
-  send(connect_fd, resp_buf, 4*BUF_LEN, 0);
 
-  Log("<%d> Sent response to client: %s\n", connect_fd, getStatus(response.header.status));
+  // Do not use strcat here, or binary file would highly likely be cutted.
+  size_t header_len = strlen(resp_buf);
+  memmove(resp_buf+header_len, response.content, response.header.content_length);
+
+  size_t sent_len = send(connect_fd, resp_buf, response.header.content_length + header_len, 0);
+  
+  Log(
+    "<%d> Sent response to client: %s, %d bytes in total, %d in content\n", 
+    connect_fd,
+    getStatus(response.header.status),
+    sent_len,
+    sent_len - header_len
+  );
 
   // Free to prevent memory leaking
   free_request(&request);

@@ -19,7 +19,7 @@ int main() {
 
   set_listen_addr("127.0.0.1");
   set_listen_port(14514);
-  set_fs_path("/tmp");
+  set_fs_path("/home/drac_zhang/Workplace/Coding/Calcaccel/calcaccel");
   printf("init_server: %d\n", init_server(10, 30, 3));
 
   return 0;
