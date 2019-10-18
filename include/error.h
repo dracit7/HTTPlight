@@ -22,6 +22,11 @@ enum error_codes {
   E_BIND,
   E_LISTEN,
   E_NO_MEM,
+  E_NO_IDLE_THREAD,
+
+  E_LOCK_FAILED,
+  E_TASK_QUEUE_FULLED,
+  E_SHUTTING_DOWN,
 
 };
 

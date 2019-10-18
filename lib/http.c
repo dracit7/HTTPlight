@@ -1,5 +1,6 @@
 
 #include "http.h"
+#include "logger.h"
 
 // This function parses a raw http request post into a `http_request` struct.
 int parse_http_request(char* raw_req, struct http_request* request) {
@@ -17,6 +18,7 @@ int parse_http_request(char* raw_req, struct http_request* request) {
   } else if (memcmp(raw_req, "POST", strlen("POST")) == 0) {
     request->header.method = POST;
   } else {
+    Debug("<%s:%d> Invalid post: %s\n", __FILE__, __LINE__, raw_req);
     return -E_INVALID_POST;
   }
 
@@ -97,7 +99,9 @@ int handle_request(struct http_request* req, struct http_response* resp, char* p
     resp->header.status = HTTP_NOT_FOUND;
     resp->header.content_type = "text/plain";
     resp->header.content_length = 0;
-    resp->content = "";
+    // If literal "" was used here, free_request would crash.
+    resp->content = (char*)malloc(1); 
+    resp->content[0] = 0;
     return -E_FILE_NOT_FOUND;
   }
 

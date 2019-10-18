@@ -1,14 +1,14 @@
 #include "socket.h"
 #include "http.h"
 #include "logger.h"
+#include "threads.h"
 
 // Use functions to change these variables
 static char* listen_addr = "127.0.0.1";
 static int listen_port = 14514;
 static char* fs_path = NULL;
 
-static char data_buf[BUF_LEN];
-static char resp_buf[4*BUF_LEN];
+static void handle_connect(void* _connect_fd);
 
 /*
  * Configure listening address/port and virtual file system's root
@@ -46,17 +46,23 @@ int set_fs_path(char* const path) {
  * Socket lib interface
  */
 
-int init_server() {
+// Init the server.
+// - thread_num: max threads of the server
+// - job_num: max connections handled concurrently by the server
+// - timeout: timeout by second
+int init_server(int thread_num, int job_num, int timeout) {
 
   // Variables
   int err = 0;
   int sock_fd, connect_fd;
   struct sockaddr_in serv_addr, cli_addr;
   socklen_t cli_addr_len = sizeof(struct sockaddr_in);
-  struct http_request request;
-  struct http_response response;
 
   Log("===== Starting the server... =====\n");
+
+  struct thread_pool* pool = init_thread_pool(thread_num, job_num);
+
+  Log("Creating the thread pool...\n");
 
   // Create a ipv4 TCP socket
   sock_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -110,57 +116,88 @@ int init_server() {
       continue;
     }
 
-    Log("=== Accepted a valid client. ===\n");
-    Log("IP: %s\n", inet_ntoa(cli_addr.sin_addr));
-    Log("Port: %u\n", cli_addr.sin_port);
+    Log("=== Accepted a valid client: <%d> ===\n", connect_fd);
+    Log("<%d> IP: %s\n", connect_fd, inet_ntoa(cli_addr.sin_addr));
+    Log("<%d> Port: %u\n", connect_fd, cli_addr.sin_port);
 
-    // Recieve the request post
-    int data_size = recv(connect_fd, data_buf, BUF_LEN, 0);
-
-    // Parse the request post
-    memset(&request, 0, sizeof(struct http_request));
-    err = parse_http_request(data_buf, &request);
+    err = thread_pool_add_task(pool, handle_connect, (void *)(long)(connect_fd));
     if (err < 0) {
-      close(sock_fd);
-      close(connect_fd);
+      Error("<%s:%d> Error code %d\n", __FILE__, __LINE__, -err);
       return err;
     }
 
-    Log("Request checked: HTTP %s request.\n", 
-      (request.header.method == POST) ? "POST" : "GET");
-    Log("Request url: %s\n", request.header.url);
-
-    // Handle the request
-    memset(&response, 0, sizeof(struct http_response));
-
-    char path[64];
-    strcpy(path, fs_path);
-    strcat(path, request.header.url);
-
-    err = handle_request(&request, &response, path);
-    if (err < 0) {
-      close(sock_fd);
-      close(connect_fd);
-      return err;
-    }
-
-    // Build and send the response
-    build_http_response(&response, resp_buf);
-    send(connect_fd, resp_buf, 4*BUF_LEN, 0);
-
-    Log("Sent response to client: %s\n", getStatus(response.header.status));
-
-    // Free to prevent memory leaking
-    free_request(&request);
-    free_response(&response);
-    close(connect_fd);
-
-    Log("=== Closed connection to client. ===\n");
+    Log("<%d> Registered client's task.\n", connect_fd);
 
   }
 
   close(sock_fd);
 
   return 0;
+
+}
+
+// The task to execute in a thread.
+void handle_connect(void* _connect_fd) {
+
+  char data_buf[BUF_LEN] = {0};
+  char resp_buf[4*BUF_LEN];
+  int connect_fd = (int)(long)_connect_fd;
+
+  int err;
+  struct http_request request;
+  struct http_response response;
+
+  Log("<%d> Task scheduled.\n", connect_fd);
+
+  // Recieve the request post
+  int data_size = recv(connect_fd, data_buf, BUF_LEN, 0);
+  if (err == -1) {
+    Error("<%s:%d> recv() failed.\n", __FILE__, __LINE__);
+    Log("=== Closed connection to client <%d>. ===\n", connect_fd);
+    close(connect_fd);
+    return;
+  }
+
+  // Parse the request post
+  memset(&request, 0, sizeof(struct http_request));
+  err = parse_http_request(data_buf, &request);
+  if (err < 0) {
+    Error("<%s:%d> Error code %d\n", __FILE__, __LINE__, -err);
+    Log("=== Closed connection to client <%d>. ===\n", connect_fd);
+    close(connect_fd);
+    return;
+  }
+
+  Log("<%d> Request checked: HTTP %s request.\n", connect_fd,
+    (request.header.method == POST) ? "POST" : "GET");
+  Log("<%d> Request url: %s\n", connect_fd, request.header.url);
+
+  // Handle the request
+  memset(&response, 0, sizeof(struct http_response));
+
+  char path[64];
+  strcpy(path, fs_path);
+  strcat(path, request.header.url);
+
+  err = handle_request(&request, &response, path);
+  if (err < 0 && err != -E_FILE_NOT_FOUND) {
+    Error("<%s:%d> Error code %d\n", __FILE__, __LINE__, -err);
+    Log("=== Closed connection to client <%d>. ===\n", connect_fd);
+    close(connect_fd);
+    return;
+  }
+
+  // Build and send the response
+  build_http_response(&response, resp_buf);
+  send(connect_fd, resp_buf, 4*BUF_LEN, 0);
+
+  Log("<%d> Sent response to client: %s\n", connect_fd, getStatus(response.header.status));
+
+  // Free to prevent memory leaking
+  free_request(&request);
+  free_response(&response);
+  close(connect_fd);
+
+  Log("=== Closed connection to client <%d>. ===\n", connect_fd);
 
 }

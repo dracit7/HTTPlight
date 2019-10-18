@@ -6,6 +6,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <sys/time.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -27,6 +28,6 @@ int set_fs_path(char* const);
  * Socket lib interface
  */
 
-int init_server();
+int init_server(int, int, int);
 
 #endif

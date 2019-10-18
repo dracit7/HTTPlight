@@ -9,5 +9,7 @@
 
 void set_logger(void (*log)(const char*));
 void Log(const char*, ...);
+void Error(const char*, ...);
+void Debug(const char*, ...);
 
 #endif

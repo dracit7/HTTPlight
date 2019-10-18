@@ -1,6 +1,6 @@
 
 BIN = server
-SRC = lib/socket.c lib/http.c lib/logger.c
+SRC = lib/socket.c lib/http.c lib/logger.c lib/threads.c
 
 RELEASE = main.c
 TEST = test.c
