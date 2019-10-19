@@ -1,6 +1,8 @@
 
 #include "logger.h"
 
+static pthread_mutex_t lock;
+
 void default_logger(const char* msg) {
   printf(msg);
 }
@@ -23,8 +25,15 @@ void Log(const char* fmt, ...) {
   vsprintf(buf, fmt, args);
   va_end(args);
 
+#ifdef SERIAL
+  pthread_mutex_lock(&lock);
   logger("[INFO] ");
   logger(buf);
+  pthread_mutex_unlock(&lock);
+#else
+  logger("[INFO] ");
+  logger(buf);
+#endif
 
 }
 
@@ -38,8 +47,15 @@ void Error(const char* fmt, ...) {
   vsprintf(buf, fmt, args);
   va_end(args);
 
+#ifdef SERIAL
+  pthread_mutex_lock(&lock);
   logger("[ERROR] ");
   logger(buf);
+  pthread_mutex_unlock(&lock);
+#else
+  logger("[ERROR] ");
+  logger(buf);
+#endif
 
 }
 
@@ -53,7 +69,14 @@ void Debug(const char* fmt, ...) {
   vsprintf(buf, fmt, args);
   va_end(args);
 
+#ifdef SERIAL
+  pthread_mutex_lock(&lock);
   logger("[DEBUG] ");
   logger(buf);
+  pthread_mutex_unlock(&lock);
+#else
+  logger("[DEBUG] ");
+  logger(buf);
+#endif
 
 }

@@ -2,6 +2,8 @@
   "files.associations": {
     "gtk.h": "c",
     "http.h": "c",
-    "socket.h": "c"
+    "socket.h": "c",
+    "cmath": "c",
+    "complex": "c"
   }
 }
