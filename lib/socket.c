@@ -8,6 +8,9 @@ static char* listen_addr = "127.0.0.1";
 static int listen_port = 14514;
 static char* fs_path = NULL;
 
+static char server_status = 1;
+pthread_mutex_t status_lock;
+
 static void handle_connect(void* _connect_fd);
 
 /*
@@ -42,6 +45,46 @@ int set_fs_path(char* const path) {
   return 0;
 }
 
+// Stop the server.
+int stop_server() {
+
+  int sock_fd;
+  struct sockaddr_in addr = {0};
+
+  Log("===== Stopping the server... =====\n");
+
+  // Set server's status to stopping
+  if (pthread_mutex_lock(&status_lock) < 0) {
+    return -E_LOCK_FAILED;
+  }
+  if (server_status == 1) {
+    Error("The server has not started!\n");
+    pthread_mutex_unlock(&status_lock);
+    return -E_REPLICATED_STOP;
+  }
+  server_status = 1;
+  pthread_mutex_unlock(&status_lock);
+
+  // Send a request to server to shut it down
+  sock_fd = socket(AF_INET, SOCK_STREAM, 0);
+  if (sock_fd == -1) {
+    return -E_SOCK_CREATE_FAILED;
+  }
+
+  addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = inet_addr(listen_addr); 
+  addr.sin_port = htons(listen_port);
+
+  if (connect(sock_fd, (struct sockaddr*)&addr, sizeof(addr)) != 0) { 
+    return -E_CONNECT;
+  } 
+
+  close(sock_fd);
+
+  return 0;
+
+}
+
 /*
  * Socket lib interface
  */
@@ -58,9 +101,17 @@ int init_server(int thread_num, int job_num, int timeout) {
   struct sockaddr_in serv_addr, cli_addr;
   socklen_t cli_addr_len = sizeof(struct sockaddr_in);
 
+  // If server has started
+  if (server_status == 0) {
+    Error("The server has already started!\n");
+    return -E_REPLICATED_START;
+  }
+
   Log("===== Starting the server... =====\n");
 
   struct thread_pool* pool = init_thread_pool(thread_num, job_num);
+  pthread_mutex_init(&status_lock, NULL);
+  server_status = 0;
 
   Log("Creating the thread pool...\n");
 
@@ -109,6 +160,16 @@ int init_server(int thread_num, int job_num, int timeout) {
   // Handle http requests
   while(1) {
 
+    // Check the server status
+    if (pthread_mutex_lock(&status_lock) < 0) {
+      return -E_LOCK_FAILED;
+    }
+    if (server_status == 1) {
+      pthread_mutex_unlock(&status_lock);
+      break;
+    }
+    pthread_mutex_unlock(&status_lock);
+
     // Accept a request
     connect_fd = accept(sock_fd, (struct sockaddr*)&cli_addr, &cli_addr_len);
     if (connect_fd == -1) {
@@ -125,12 +186,14 @@ int init_server(int thread_num, int job_num, int timeout) {
       Error("<%s:%d> Error code %d\n", __FILE__, __LINE__, -err);
       return err;
     }
-
     Log("<%d> Registered client's task.\n", connect_fd);
 
   }
 
+  free_thread_pool(pool);
   close(sock_fd);
+
+  Log("===== Server stopped =====\n");
 
   return 0;
 

@@ -1,6 +1,7 @@
 {
   "files.associations": {
     "gtk.h": "c",
-    "http.h": "c"
+    "http.h": "c",
+    "socket.h": "c"
   }
 }

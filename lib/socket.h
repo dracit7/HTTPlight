@@ -29,5 +29,6 @@ int set_fs_path(char* const);
  */
 
 int init_server(int, int, int);
+int stop_server();
 
 #endif
