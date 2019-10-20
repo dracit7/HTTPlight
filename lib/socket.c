@@ -118,6 +118,7 @@ int init_server(int thread_num, int job_num, int timeout) {
   // Create a ipv4 TCP socket
   sock_fd = socket(AF_INET, SOCK_STREAM, 0);
   if (sock_fd == -1) {
+    server_status = 1;
     return -E_SOCK_CREATE_FAILED;
   }
 
@@ -132,9 +133,11 @@ int init_server(int thread_num, int job_num, int timeout) {
   err = inet_pton(AF_INET, listen_addr, (void *)(&serv_addr.sin_addr));
   if (err == 0) {
     close(sock_fd);
+    server_status = 1;
     return -E_INVALID_IP;
   } else if (err < 0) {
     close(sock_fd);
+    server_status = 1;
     return -E_UNRECOG;
   }
 
@@ -143,6 +146,7 @@ int init_server(int thread_num, int job_num, int timeout) {
   // Bind the socket to serv_addr
   if (bind(sock_fd, (struct sockaddr*)&serv_addr, sizeof(struct sockaddr)) == -1) {
     close(sock_fd);
+    server_status = 1;
     return -E_BIND;
   }
 
@@ -151,6 +155,7 @@ int init_server(int thread_num, int job_num, int timeout) {
   // Listen
   if (listen(sock_fd, MAX_LISTEN) == -1) {
     close(sock_fd);
+    server_status = 1;
     return -E_LISTEN;
   }
 
@@ -162,6 +167,7 @@ int init_server(int thread_num, int job_num, int timeout) {
 
     // Check the server status
     if (pthread_mutex_lock(&status_lock) < 0) {
+      server_status = 1;
       return -E_LOCK_FAILED;
     }
     if (server_status == 1) {
@@ -184,6 +190,7 @@ int init_server(int thread_num, int job_num, int timeout) {
     err = thread_pool_add_task(pool, handle_connect, (void *)(long)(connect_fd));
     if (err < 0) {
       Error("<%s:%d> Error code %d\n", __FILE__, __LINE__, -err);
+      server_status = 1;
       return err;
     }
     Log("<%d> Registered client's task.\n", connect_fd);
